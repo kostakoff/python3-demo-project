@@ -1,0 +1,85 @@
+def call() {
+
+    Map opts = [:]
+    //opts.jenkinsNode = 'Windows'
+    opts.projectName = 'python3-demo'
+    
+    pipeline {
+        agent {
+            // Which Jenkins node to build on
+            label 'jk-w2'
+        }
+
+        options {
+            // Colorize the terminal output
+            ansiColor('xterm')
+            // the build should never take this long
+            timeout(time: 1, unit: 'HOURS')
+            // add timestamps to log output
+            timestamps()
+            // disable parallel buildchain
+            disableConcurrentBuilds()
+        }
+
+        environment {
+            PROJECT_NAME = "${opts.projectName}"
+            SONAR_REPORT_PATH = "${WORKSPACE}/report-task.txt"
+            PROJECT_SOURCES = "demo_flask"
+        }
+
+        stages {
+            stage('Initialise') {
+                steps {
+                    cleanWs()
+                    checkout scm
+                    script {
+                        env.APP_VERSION = readFile('version.txt').trim()
+                        echo "App version set to ${env.APP_VERSION}"
+                    }
+                }
+            }
+            stage('Build project') {
+                steps {
+                    script { 
+
+                        env.SONAR_SCANNER_CLI = tool("sonar-scanner-cli")
+                        env.PYTHON_TOOL = tool("python3")
+
+                        pwsh(script: '''
+                            & $env:PYTHON_TOOL/python -m venv .venv
+                            .venv/Scripts/activate.ps1
+                        ''')
+
+                        pwsh(script: '''
+                            .venv/Scripts/activate.ps1
+                            pip install -r requirements.txt
+                            python -m demo_flask.cli --version
+                        ''')
+
+                        withSonarQubeEnv('sonar.local') {
+                            pwsh(script: '''
+                                & $env:SONAR_SCANNER_CLI\\bin\\sonar-scanner.bat `
+                                -D sonar.projectKey=$env:PROJECT_NAME `
+                                -D sonar.projectVersion=$env:APP_VERSION `
+                                -D sonar.projectBaseDir=$env:WORKSPACE `
+                                -D sonar.sources=$env:PROJECT_SOURCES `
+                                -D sonar.scanner.metadataFilePath=$env:SONAR_REPORT_PATH `
+                                -D sonar.python.version=3.9
+                            ''')
+                        }
+                        
+                        pwsh(script: 'ls')
+                        
+                        //timeout(time: 1, unit: 'MINUTES') {
+                        //    waitForQualityGate abortPipeline: false
+                        //}
+
+                    }
+                }
+            }
+        }
+
+    }
+}
+
+call()

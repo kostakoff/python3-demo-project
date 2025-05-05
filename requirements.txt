@@ -1,0 +1,6 @@
+# packages list
+
+# -i http://nexus.local/repository/pypi/pypi/simple/
+
+Flask==2.2.5
+Werkzeug==2.2.3
